@@ -491,6 +491,11 @@ fn main() {
         zed_actions::init();
 
         release_channel::init(app_version, cx);
+        if let Some(upstream_base_version) =
+            option_env!("ZED_UPSTREAM_BASE_VERSION").and_then(|version| version.parse().ok())
+        {
+            release_channel::AppVersion::set_upstream_base_version(upstream_base_version, cx);
+        }
         gpui_tokio::init(cx);
         if let Some(app_commit_sha) = app_commit_sha {
             AppCommitSha::set_global(app_commit_sha, cx);

@@ -18,7 +18,7 @@ impl UpdateVersion {
             cx.observe(&auto_updater, |this, auto_update, cx| {
                 this.status = auto_update.read(cx).status();
                 this.update_check_type = auto_update.read(cx).update_check_type();
-                if this.status.is_updated() {
+                if this.status.is_updated() || this.status.is_update_available() {
                     this.dismissed = false;
                 }
             })
@@ -49,6 +49,9 @@ impl UpdateVersion {
             AutoUpdateStatus::Installing { .. } => AutoUpdateStatus::Updated {
                 version: VersionCheckType::Semantic(Version::new(1, 99, 0)),
             },
+            AutoUpdateStatus::UpdateAvailable { .. } => AutoUpdateStatus::Updated {
+                version: VersionCheckType::Semantic(Version::new(1, 99, 0)),
+            },
             AutoUpdateStatus::Updated { .. } => AutoUpdateStatus::Errored {
                 error: Arc::new(anyhow!("Network timeout")),
             },
@@ -62,6 +65,10 @@ impl UpdateVersion {
     }
 
     pub fn show_update_in_menu_bar(&self) -> bool {
+        self.dismissed && (self.status.is_updated() || self.status.is_update_available())
+    }
+
+    pub fn should_restart_to_update(&self) -> bool {
         self.dismissed && self.status.is_updated()
     }
 
@@ -72,6 +79,13 @@ impl UpdateVersion {
                 VersionCheckType::Semantic(semantic_version) => semantic_version.to_string(),
             }
         })
+    }
+
+    fn version_for_release_url(version: &VersionCheckType) -> String {
+        match version {
+            VersionCheckType::Sha(sha) => sha.full(),
+            VersionCheckType::Semantic(semantic_version) => semantic_version.to_string(),
+        }
     }
 }
 
@@ -91,6 +105,22 @@ impl Render for UpdateVersion {
             AutoUpdateStatus::Installing { version } => {
                 let version = Self::version_tooltip_message(&version);
                 UpdateButton::installing(version).into_any_element()
+            }
+            AutoUpdateStatus::UpdateAvailable { version } => {
+                let tooltip = Self::version_tooltip_message(&version);
+                let version = version.clone();
+                UpdateButton::available(tooltip)
+                    .on_click(move |_, _, cx| {
+                        cx.open_url(&format!(
+                            "https://zed.dev/releases/stable/{}",
+                            Self::version_for_release_url(&version)
+                        ));
+                    })
+                    .on_dismiss(cx.listener(|this, _, _window, cx| {
+                        this.dismissed = true;
+                        cx.notify()
+                    }))
+                    .into_any_element()
             }
             AutoUpdateStatus::Updated { version } => {
                 let version = Self::version_tooltip_message(&version);
