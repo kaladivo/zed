@@ -8,7 +8,7 @@ use gpui::{
 };
 use http_client::{HttpClient, HttpClientWithUrl};
 use paths::remote_servers_dir;
-use release_channel::{AppCommitSha, ReleaseChannel};
+use release_channel::{AppCommitSha, AppVersion, ReleaseChannel};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use settings::{RegisterSetting, Settings, SettingsStore};
@@ -120,6 +120,7 @@ pub struct AssetQuery<'a> {
 pub enum AutoUpdateStatus {
     Idle,
     Checking,
+    UpdateAvailable { version: VersionCheckType },
     Downloading { version: VersionCheckType },
     Installing { version: VersionCheckType },
     Updated { version: VersionCheckType },
@@ -131,6 +132,10 @@ impl PartialEq for AutoUpdateStatus {
         match (self, other) {
             (AutoUpdateStatus::Idle, AutoUpdateStatus::Idle) => true,
             (AutoUpdateStatus::Checking, AutoUpdateStatus::Checking) => true,
+            (
+                AutoUpdateStatus::UpdateAvailable { version: v1 },
+                AutoUpdateStatus::UpdateAvailable { version: v2 },
+            ) => v1 == v2,
             (
                 AutoUpdateStatus::Downloading { version: v1 },
                 AutoUpdateStatus::Downloading { version: v2 },
@@ -154,6 +159,10 @@ impl PartialEq for AutoUpdateStatus {
 impl AutoUpdateStatus {
     pub fn is_updated(&self) -> bool {
         matches!(self, Self::Updated { .. })
+    }
+
+    pub fn is_update_available(&self) -> bool {
+        matches!(self, Self::UpdateAvailable { .. })
     }
 }
 
@@ -643,17 +652,22 @@ impl AutoUpdater {
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> Result<()> {
-        let (client, installed_version, previous_status, release_channel) =
+        let (client, installed_version, previous_status, release_channel, upstream_base_version) =
             this.read_with(cx, |this, cx| {
                 (
                     this.client.http_client(),
                     this.current_version.clone(),
                     this.status.clone(),
                     ReleaseChannel::try_global(cx).unwrap_or(ReleaseChannel::Stable),
+                    AppVersion::upstream_base_version(cx),
                 )
             });
-
-        Self::check_dependencies()?;
+        let notify_only_version = matches!(release_channel, ReleaseChannel::Stable)
+            .then_some(upstream_base_version)
+            .flatten();
+        let comparison_version = notify_only_version
+            .clone()
+            .unwrap_or_else(|| installed_version.clone());
 
         this.update(cx, |this, cx| {
             this.status = AutoUpdateStatus::Checking;
@@ -668,7 +682,7 @@ impl AutoUpdater {
         let newer_version = Self::check_if_fetched_version_is_newer(
             release_channel,
             app_commit_sha,
-            installed_version,
+            comparison_version,
             fetched_version,
             previous_status.clone(),
         )?;
@@ -676,7 +690,9 @@ impl AutoUpdater {
         let Some(newer_version) = newer_version else {
             this.update(cx, |this, cx| {
                 let status = match previous_status {
-                    AutoUpdateStatus::Updated { .. } => previous_status,
+                    AutoUpdateStatus::Updated { .. } | AutoUpdateStatus::UpdateAvailable { .. } => {
+                        previous_status
+                    }
                     _ => AutoUpdateStatus::Idle,
                 };
                 this.status = status;
@@ -684,6 +700,18 @@ impl AutoUpdater {
             });
             return Ok(());
         };
+
+        if notify_only_version.is_some() {
+            this.update(cx, |this, cx| {
+                this.status = AutoUpdateStatus::UpdateAvailable {
+                    version: newer_version,
+                };
+                cx.notify();
+            });
+            return Ok(());
+        }
+
+        Self::check_dependencies()?;
 
         this.update(cx, |this, cx| {
             this.status = AutoUpdateStatus::Downloading {
@@ -734,7 +762,9 @@ impl AutoUpdater {
     ) -> Result<Option<VersionCheckType>> {
         let parsed_fetched_version = fetched_version.parse::<Version>();
 
-        if let AutoUpdateStatus::Updated { version, .. } = status {
+        if let AutoUpdateStatus::Updated { version, .. }
+        | AutoUpdateStatus::UpdateAvailable { version, .. } = status
+        {
             match version {
                 VersionCheckType::Sha(cached_version) => {
                     let should_download =
@@ -1296,6 +1326,62 @@ mod tests {
         let path = will_restart.await.unwrap().unwrap();
         assert_eq!(path, tmp_dir.path().join("zed"));
         assert_eq!(std::fs::read_to_string(path).unwrap(), "<fake-zed-update>");
+    }
+
+    #[gpui::test]
+    async fn test_auto_update_notifies_without_downloading_when_upstream_base_version_is_set(
+        cx: &mut TestAppContext,
+    ) {
+        cx.background_executor.allow_parking();
+
+        cx.update(|cx| {
+            settings::init(cx);
+
+            let current_version = semver::Version::new(1, 0, 0);
+            release_channel::init_test(current_version, ReleaseChannel::Stable, cx);
+            AppVersion::set_upstream_base_version(semver::Version::new(0, 100, 0), cx);
+
+            let clock = Arc::new(FakeSystemClock::new());
+            let fake_client_http = FakeHttpClient::create(move |req| async move {
+                if req.uri().path() == "/releases/stable/latest/asset" {
+                    return Ok(Response::builder()
+                        .status(200)
+                        .body(
+                            r#"{"version":"0.100.1","url":"https://test.example/new-download"}"#
+                                .into(),
+                        )
+                        .unwrap());
+                } else if req.uri().path() == "/new-download" {
+                    panic!("notify-only updates should not download release assets");
+                }
+
+                Ok(Response::builder().status(404).body("".into()).unwrap())
+            });
+            let client = Client::new(clock, fake_client_http, cx);
+            crate::init(client, cx);
+        });
+
+        let auto_updater = cx.update(|cx| AutoUpdater::get(cx).expect("auto updater should exist"));
+        cx.update(|cx| {
+            auto_updater.update(cx, |updater, cx| updater.poll(UpdateCheckType::Manual, cx));
+        });
+
+        loop {
+            cx.background_executor.timer(Duration::from_millis(0)).await;
+            cx.run_until_parked();
+            let status = auto_updater.read_with(cx, |updater, _| updater.status());
+            if !matches!(status, AutoUpdateStatus::Checking) {
+                break;
+            }
+        }
+
+        let status = auto_updater.read_with(cx, |updater, _| updater.status());
+        assert_eq!(
+            status,
+            AutoUpdateStatus::UpdateAvailable {
+                version: VersionCheckType::Semantic(semver::Version::new(0, 100, 1))
+            }
+        );
     }
 
     #[test]

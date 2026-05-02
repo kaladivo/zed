@@ -41,6 +41,8 @@ fn main() {
 
     // Populate git sha environment variable if git is available
     println!("cargo:rerun-if-changed=../../.git/logs/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/packed-refs");
+    println!("cargo:rerun-if-changed=../../.git/refs/tags");
     println!(
         "cargo:rustc-env=TARGET={}",
         std::env::var("TARGET").unwrap()
@@ -79,6 +81,15 @@ fn main() {
             // This is currently the best way to make `cargo build ...`'s build script
             // to print something to stdout without extra verbosity.
             println!("cargo::warning=Info: using '{git_sha}' hash for ZED_COMMIT_SHA env var");
+        }
+    }
+
+    if let Some(upstream_base_version) = upstream_base_version() {
+        println!("cargo:rustc-env=ZED_UPSTREAM_BASE_VERSION={upstream_base_version}");
+        if let Ok(build_profile) = std::env::var("PROFILE")
+            && build_profile == "release"
+        {
+            println!("cargo::warning=Info: using upstream base version '{upstream_base_version}'");
         }
     }
 
@@ -238,6 +249,29 @@ fn main() {
 
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     prepare_app_icon_x11();
+}
+
+fn upstream_base_version() -> Option<String> {
+    let output = Command::new("git")
+        .args([
+            "describe",
+            "--tags",
+            "--match",
+            "v[0-9]*",
+            "--exclude",
+            "*-pre",
+            "--abbrev=0",
+            "HEAD",
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let tag = String::from_utf8_lossy(&output.stdout);
+    tag.trim().strip_prefix('v').map(ToOwned::to_owned)
 }
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]

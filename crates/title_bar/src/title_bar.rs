@@ -1072,6 +1072,9 @@ impl TitleBar {
                 let auto_updater = auto_update::AutoUpdater::get(cx);
                 let label = match auto_updater.map(|auto_update| auto_update.read(cx).status()) {
                     Some(AutoUpdateStatus::Updated { .. }) => "Please restart Zed to Collaborate",
+                    Some(AutoUpdateStatus::UpdateAvailable { .. }) => {
+                        "Please update Zed to Collaborate"
+                    }
                     Some(AutoUpdateStatus::Installing { .. })
                     | Some(AutoUpdateStatus::Downloading { .. })
                     | Some(AutoUpdateStatus::Checking) => "Updating...",
@@ -1120,6 +1123,7 @@ impl TitleBar {
 
     pub fn render_user_menu_button(&mut self, cx: &mut Context<Self>) -> impl Element {
         let show_update_button = self.update_version.read(cx).show_update_in_menu_bar();
+        let should_restart_to_update = self.update_version.read(cx).should_restart_to_update();
 
         let user_store = self.user_store.clone();
         let user_store_read = user_store.read(cx);
@@ -1218,7 +1222,14 @@ impl TitleBar {
                                     .w_full()
                                     .gap_1()
                                     .justify_between()
-                                    .child(Label::new("Restart to update Zed").color(Color::Accent))
+                                    .child(
+                                        Label::new(if should_restart_to_update {
+                                            "Restart to update Zed"
+                                        } else {
+                                            "New Zed version available"
+                                        })
+                                        .color(Color::Accent),
+                                    )
                                     .child(
                                         Icon::new(IconName::Download)
                                             .size(IconSize::Small)
@@ -1227,7 +1238,11 @@ impl TitleBar {
                                     .into_any_element()
                             },
                             move |_, cx| {
-                                workspace::reload(cx);
+                                if should_restart_to_update {
+                                    workspace::reload(cx);
+                                } else {
+                                    cx.open_url("https://zed.dev/releases/stable");
+                                }
                             },
                         )
                         .separator()

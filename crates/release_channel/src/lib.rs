@@ -75,6 +75,10 @@ struct GlobalAppVersion(Version);
 
 impl Global for GlobalAppVersion {}
 
+struct GlobalUpstreamBaseVersion(Version);
+
+impl Global for GlobalUpstreamBaseVersion {}
+
 /// The version of Zed.
 pub struct AppVersion;
 
@@ -115,6 +119,17 @@ impl AppVersion {
         } else {
             Version::new(0, 0, 0)
         }
+    }
+
+    /// Returns the official upstream stable version this build is based on, if one was embedded.
+    pub fn upstream_base_version(cx: &App) -> Option<Version> {
+        cx.try_global::<GlobalUpstreamBaseVersion>()
+            .map(|version| version.0.clone())
+    }
+
+    /// Sets the official upstream stable version this build is based on.
+    pub fn set_upstream_base_version(version: Version, cx: &mut App) {
+        cx.set_global(GlobalUpstreamBaseVersion(version));
     }
 }
 

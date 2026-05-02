@@ -91,6 +91,12 @@ impl UpdateButton {
             .with_dismiss()
     }
 
+    pub fn available(version: impl Into<SharedString>) -> Self {
+        Self::new(IconName::Download, "New Zed version available")
+            .tooltip(version)
+            .with_dismiss()
+    }
+
     pub fn errored(error: impl Into<SharedString>) -> Self {
         Self::new(IconName::Warning, "Failed to update Zed")
             .icon_color(Color::Warning)
@@ -188,6 +194,10 @@ impl Component for UpdateButton {
                             single_example(
                                 "Ready to Update",
                                 UpdateButton::updated(version).into_any_element(),
+                            ),
+                            single_example(
+                                "Update Available",
+                                UpdateButton::available(version).into_any_element(),
                             ),
                             single_example(
                                 "Error",
