@@ -1,6 +1,6 @@
 ---
 name: update-zed-fork
-description: Update this project’s Zed fork to the latest official stable release. Use when the user wants to check for new stable Zed releases, rebase fork commits while preserving feature intent, force-push the fork branch after confirmation, build the macOS app bundle, and optionally replace the installed app.
+description: Update this project’s Zed fork to the latest official stable release. Use when the user wants to check for new stable Zed releases, rebase fork commits while preserving feature intent, force-push the fork branch after confirmation, then use build-zed-fork to build the macOS app bundle and optionally replace the installed app.
 ---
 
 # Update Zed Fork
@@ -97,31 +97,15 @@ Use the user’s existing git identity. Do not alter authorship. If committing d
 
 ### 6. Build Current Platform
 
-Fetch tags again immediately before building so `ZED_UPSTREAM_BASE_VERSION` is based on the latest local tags:
+Use the repo-local `build-zed-fork` skill for all build and install work. That skill owns `ZED_UPSTREAM_BASE_VERSION` detection, macOS bundling, copying the app to `<repo>/zed.app`, reporting the app path, and any installation prompt.
+
+Run:
 
 ```bash
-git fetch origin --tags --prune
+bun .agents/skills/build-zed-fork/scripts/build-zed-app.ts
 ```
 
-For macOS, build the app bundle with:
-
-```bash
-script/bundle-mac
-```
-
-If the user asks to install directly, use:
-
-```bash
-script/bundle-mac -i
-```
-
-Otherwise, report the resulting `.app` path from the script output. If a DMG is created instead of leaving an app bundle in `target`, inspect the build output directory and identify the actual app bundle or DMG path.
-
-### 7. Offer Installation
-
-End by giving the created app location and asking whether to replace the app in `/Applications`. Do not replace the installed app without explicit confirmation.
-
-If the user confirms replacement, remove the existing matching app bundle and copy or move the newly built app into `/Applications`, matching the build script’s output and preserving the app bundle name.
+Report the emitted `APP_PATH=...` value to the user.
 
 ## Output Style
 
