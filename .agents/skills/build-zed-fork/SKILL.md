@@ -1,11 +1,25 @@
 ---
 name: build-zed-fork
-description: Builds this Zed fork into a repo-local zed.app bundle, verifies the upstream base version from Git history, reports the built app path, and optionally replaces /Applications/Zed.app after asking the user. Use when working in this repo and the user wants to build, package, install, or replace their local macOS Zed fork.
+description: Builds this Zed fork into a repo-local zed.app bundle for use as the user's installed Zed app, without public-release artifacts, verifies the upstream base version from Git history, reports the built app path, and optionally replaces /Applications/Zed.app after asking the user. Use when working in this repo and the user wants to build, package, install, or replace their macOS Zed fork.
 ---
 
 # Build Zed Fork
 
-Use this skill to build the current macOS Zed checkout into a project-local `zed.app` bundle and optionally replace the installed app in `/Applications`.
+Use this skill to build the current macOS Zed checkout into a project-local `zed.app` bundle that can replace the official installed Zed app in `/Applications`.
+
+The default build is for running the user's fork as their actual Zed app. It builds the app binaries and app-bundle dependencies needed to launch and use Zed:
+
+- `zed`
+- `cli`
+- bundled git binary
+- app resources, document icon, provisioning profile, licenses, and local ad-hoc signature
+
+It intentionally skips public-release artifacts that are not needed for using the forked app on this machine:
+
+- `remote_server`
+- remote-server gzip artifact
+- Sentry debug-symbol upload
+- DMG creation and Apple notarization
 
 ## Workflow
 
@@ -24,6 +38,7 @@ bun .agents/skills/build-zed-fork/scripts/build-zed-app.ts
 
 4. Watch the script output for:
    - `Using ZED_UPSTREAM_BASE_VERSION=...`
+   - `Skipping release-only remote_server, Sentry, and DMG artifacts`
    - `APP_PATH=...`
 5. Present the `APP_PATH` value to the user.
 6. Ask whether they want to replace `/Applications/Zed.app` with the built app.
@@ -33,7 +48,7 @@ bun .agents/skills/build-zed-fork/scripts/build-zed-app.ts
 bun .agents/skills/build-zed-fork/scripts/build-zed-app.ts --install
 ```
 
-The second command rebuilds if needed, refreshes `<repo>/zed.app`, and replaces `/Applications/Zed.app`.
+The second command rebuilds the forked app if needed, refreshes `<repo>/zed.app`, and replaces `/Applications/Zed.app`.
 
 ## Upstream Base Version
 
