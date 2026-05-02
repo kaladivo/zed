@@ -35345,7 +35345,10 @@ async fn test_diff_review_button_hidden_when_ai_disabled(cx: &mut TestAppContext
     cx.update(|cx| {
         project::DisableAiSettings::register(cx);
         project::DisableAiSettings::override_global(
-            project::DisableAiSettings { disable_ai: true },
+            project::DisableAiSettings {
+                disable_ai: true,
+                disable_agents_ai: false,
+            },
             cx,
         );
     });
@@ -35406,7 +35409,10 @@ async fn test_diff_review_button_shown_when_ai_enabled(cx: &mut TestAppContext) 
     cx.update(|cx| {
         project::DisableAiSettings::register(cx);
         project::DisableAiSettings::override_global(
-            project::DisableAiSettings { disable_ai: false },
+            project::DisableAiSettings {
+                disable_ai: false,
+                disable_agents_ai: false,
+            },
             cx,
         );
     });

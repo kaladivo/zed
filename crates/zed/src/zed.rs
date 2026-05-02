@@ -15,7 +15,7 @@ pub mod visual_tests;
 #[cfg(target_os = "windows")]
 pub(crate) mod windows_only_instance;
 
-use agent_settings::{UserAgentsMdState, init_user_agents_md};
+use agent_settings::{AgentSettings, UserAgentsMdState, init_user_agents_md};
 use agent_ui::AgentDiffToolbar;
 use anyhow::Context as _;
 pub use app_menus::*;
@@ -773,6 +773,7 @@ fn setup_or_teardown_ai_panel<P: Panel>(
     let disable_ai = SettingsStore::global(cx)
         .get::<DisableAiSettings>(None)
         .disable_ai
+        || !AgentSettings::get_global(cx).enabled(cx)
         || cfg!(test);
     let existing_panel = workspace.panel::<P>(cx);
     match (disable_ai, existing_panel) {
@@ -781,7 +782,8 @@ fn setup_or_teardown_ai_panel<P: Panel>(
             workspace.update_in(cx, |workspace, window, cx| {
                 let disable_ai = SettingsStore::global(cx)
                     .get::<DisableAiSettings>(None)
-                    .disable_ai;
+                    .disable_ai
+                    || !AgentSettings::get_global(cx).enabled(cx);
                 let have_panel = workspace.panel::<P>(cx).is_some();
                 if !disable_ai && !have_panel {
                     workspace.add_panel(panel, window, cx);

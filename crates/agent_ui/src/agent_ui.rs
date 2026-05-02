@@ -673,7 +673,7 @@ fn maybe_backfill_editor_layout(fs: Arc<dyn Fs>, is_new_install: bool, cx: &mut 
 
 fn update_command_palette_filter(cx: &mut App) {
     let disable_ai = DisableAiSettings::get_global(cx).disable_ai;
-    let agent_enabled = AgentSettings::get_global(cx).enabled;
+    let agent_enabled = AgentSettings::get_global(cx).enabled(cx);
 
     let edit_prediction_provider = AllLanguageSettings::get_global(cx)
         .edit_predictions
@@ -715,10 +715,12 @@ fn update_command_palette_filter(cx: &mut App) {
                 filter.show_namespace("agent");
                 filter.show_namespace("agents");
                 filter.show_namespace("assistant");
+                filter.show_namespace("multi_workspace");
             } else {
                 filter.hide_namespace("agent");
                 filter.hide_namespace("agents");
                 filter.hide_namespace("assistant");
+                filter.hide_namespace("multi_workspace");
             }
 
             match edit_prediction_provider {
@@ -745,8 +747,6 @@ fn update_command_palette_filter(cx: &mut App) {
 
             filter.show_namespace("zed_predict_onboarding");
             filter.show_action_types(&[TypeId::of::<zed_actions::OpenZedPredictOnboarding>()]);
-
-            filter.show_namespace("multi_workspace");
         }
 
         // Hide `assistant: open rules library` — Rules are surfaced
@@ -884,7 +884,13 @@ mod tests {
 
         cx.update(|cx| {
             AgentSettings::override_global(agent_settings.clone(), cx);
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            DisableAiSettings::override_global(
+                DisableAiSettings {
+                    disable_ai: false,
+                    disable_agents_ai: false,
+                },
+                cx,
+            );
 
             // Initial update
             update_command_palette_filter(cx);

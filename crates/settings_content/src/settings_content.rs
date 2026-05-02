@@ -1278,7 +1278,7 @@ impl<T: Clone> merge_from::MergeFrom for ExtendingVec<T> {
 // A SaturatingBool in the settings can only ever be set to true,
 // later attempts to set it to false will be ignored.
 //
-// Used by `disable_ai`.
+// Used by `disable_ai` and `disable_agents_ai`.
 #[derive(Debug, Default, Copy, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SaturatingBool(pub bool);
 

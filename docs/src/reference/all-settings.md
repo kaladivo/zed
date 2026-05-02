@@ -555,6 +555,16 @@ See [Git documentation](../git.md#diff-view-styles) for more details.
 
 `boolean` values
 
+## Disable Agents AI
+
+- Description: Disable all AI features except edit suggestions
+- Setting: `disable_agents_ai`
+- Default: `false`
+
+**Options**
+
+`boolean` values
+
 ## Direnv Integration
 
 - Description: Settings for [direnv](https://direnv.net/) integration. Requires `direnv` to be installed.
