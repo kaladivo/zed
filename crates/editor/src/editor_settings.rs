@@ -82,9 +82,10 @@ pub struct StickyScroll {
     pub enabled: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Toolbar {
     pub breadcrumbs: bool,
+    pub breadcrumbs_font_size: f32,
     pub quick_actions: bool,
     pub selections_menu: bool,
     pub agent_review: bool,
@@ -216,6 +217,7 @@ impl Settings for EditorSettings {
             hover_popover_hiding_delay: editor.hover_popover_hiding_delay.unwrap(),
             toolbar: Toolbar {
                 breadcrumbs: toolbar.breadcrumbs.unwrap(),
+                breadcrumbs_font_size: toolbar.breadcrumbs_font_size.unwrap().0,
                 quick_actions: toolbar.quick_actions.unwrap(),
                 selections_menu: toolbar.selections_menu.unwrap(),
                 agent_review: toolbar.agent_review.unwrap(),

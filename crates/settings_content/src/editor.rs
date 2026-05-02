@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use settings_macros::{MergeFrom, with_fallible_options};
 
 use crate::{
-    DelayMs, DiagnosticSeverityContent, ShowScrollbar, serialize_f32_with_two_decimal_places,
+    DelayMs, DiagnosticSeverityContent, FontSize, ShowScrollbar,
+    serialize_f32_with_two_decimal_places,
 };
 
 #[with_fallible_options]
@@ -352,12 +353,16 @@ impl RelativeLineNumbers {
 
 // Toolbar related settings
 #[with_fallible_options]
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq)]
 pub struct ToolbarContent {
     /// Whether to display breadcrumbs in the editor toolbar.
     ///
     /// Default: true
     pub breadcrumbs: Option<bool>,
+    /// Font size for breadcrumbs, in pixels.
+    ///
+    /// Default: 14
+    pub breadcrumbs_font_size: Option<FontSize>,
     /// Whether to display quick action buttons in the editor toolbar.
     ///
     /// Default: true

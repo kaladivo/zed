@@ -2447,7 +2447,7 @@ fn editor_page() -> SettingsPage {
         ]
     }
 
-    fn toolbar_section() -> [SettingsPageItem; 6] {
+    fn toolbar_section() -> [SettingsPageItem; 7] {
         [
             SettingsPageItem::SectionHeader("Toolbar"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -2469,6 +2469,30 @@ fn editor_page() -> SettingsPage {
                             .toolbar
                             .get_or_insert_default()
                             .breadcrumbs = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Breadcrumbs Font Size",
+                description: "Font size for breadcrumbs, in pixels.",
+                field: Box::new(SettingField {
+                    json_path: Some("toolbar.breadcrumbs_font_size"),
+                    pick: |settings_content| {
+                        settings_content
+                            .editor
+                            .toolbar
+                            .as_ref()?
+                            .breadcrumbs_font_size
+                            .as_ref()
+                    },
+                    write: |settings_content, value| {
+                        settings_content
+                            .editor
+                            .toolbar
+                            .get_or_insert_default()
+                            .breadcrumbs_font_size = value;
                     },
                 }),
                 metadata: None,

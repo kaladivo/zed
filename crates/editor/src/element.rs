@@ -8152,7 +8152,11 @@ pub fn render_breadcrumb_text(
 ) -> gpui::AnyElement {
     const MAX_SEGMENTS: usize = 12;
 
-    let element = h_flex().flex_grow().text_ui(cx);
+    let breadcrumbs_font_size = EditorSettings::get_global(cx).toolbar.breadcrumbs_font_size;
+    let element = h_flex()
+        .flex_grow()
+        .text_ui(cx)
+        .text_size(px(breadcrumbs_font_size));
 
     let prefix_end_ix = cmp::min(segments.len(), MAX_SEGMENTS / 2);
     let suffix_start_ix = cmp::max(
@@ -8178,6 +8182,7 @@ pub fn render_breadcrumb_text(
             text_style.font_style = font.style;
             text_style.font_weight = font.weight;
         }
+        text_style.font_size = px(breadcrumbs_font_size).into();
         text_style.color = Color::Muted.color(cx);
 
         if index == 0

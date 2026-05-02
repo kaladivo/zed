@@ -488,6 +488,8 @@
   "toolbar": {
     // Whether to show breadcrumbs.
     "breadcrumbs": true,
+    // Font size for breadcrumbs, in pixels.
+    "breadcrumbs_font_size": 14,
     // Whether to show quick action buttons.
     "quick_actions": true,
     // Whether to show the Selections menu in the editor toolbar.
