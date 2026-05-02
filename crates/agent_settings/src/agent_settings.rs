@@ -172,7 +172,8 @@ pub struct AgentSettings {
 
 impl AgentSettings {
     pub fn enabled(&self, cx: &App) -> bool {
-        self.enabled && !DisableAiSettings::get_global(cx).disable_ai
+        let disable_ai = DisableAiSettings::get_global(cx);
+        self.enabled && !disable_ai.disable_ai && !disable_ai.disable_agents_ai
     }
 
     pub fn temperature_for_model(model: &Arc<dyn LanguageModel>, cx: &App) -> Option<f32> {
@@ -1249,6 +1250,25 @@ mod tests {
         let content: ToolPermissionsContent = serde_json::from_value(json_deny).unwrap();
         let permissions = compile_tool_permissions(Some(content));
         assert_eq!(permissions.default, ToolPermissionMode::Deny);
+    }
+
+    #[gpui::test]
+    fn test_enabled_respects_disable_agents_ai(cx: &mut gpui::App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        project::DisableAiSettings::register(cx);
+        AgentSettings::register(cx);
+
+        assert!(AgentSettings::get_global(cx).enabled(cx));
+
+        SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_user_settings(r#"{ "disable_agents_ai": true }"#, cx)
+                .unwrap();
+        });
+
+        assert!(!AgentSettings::get_global(cx).enabled(cx));
+        assert!(!project::DisableAiSettings::get_global(cx).disable_ai);
     }
 
     #[gpui::test]

@@ -1086,12 +1086,14 @@ pub enum PulledDiagnostics {
 #[derive(Copy, Clone, Debug, RegisterSetting)]
 pub struct DisableAiSettings {
     pub disable_ai: bool,
+    pub disable_agents_ai: bool,
 }
 
 impl settings::Settings for DisableAiSettings {
     fn from_settings(content: &settings::SettingsContent) -> Self {
         Self {
             disable_ai: content.project.disable_ai.unwrap().0,
+            disable_agents_ai: content.project.disable_agents_ai.unwrap().0,
         }
     }
 }

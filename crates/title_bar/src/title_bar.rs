@@ -7,6 +7,7 @@ mod update_version;
 
 use crate::application_menu::{ApplicationMenu, show_menus};
 use crate::plan_chip::PlanChip;
+use agent_settings::AgentSettings;
 use arrayvec::ArrayVec;
 use git_ui::worktree_picker::WorktreePicker;
 pub use platform_title_bar::{
@@ -709,7 +710,7 @@ impl TitleBar {
             .and_then(|mw| mw.upgrade())
             .map(|mw| mw.read(cx).sidebar_open())
             .unwrap_or(false)
-            && PlatformTitleBar::is_multi_workspace_enabled(cx);
+            && AgentSettings::get_global(cx).enabled(cx);
 
         let is_threads_list_view_active = self
             .multi_workspace

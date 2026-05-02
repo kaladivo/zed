@@ -29,6 +29,7 @@ test-support = [
 ]
 
 [dependencies]
+agent_settings.workspace = true
 anyhow.workspace = true
 auto_update.workspace = true
 platform_title_bar.workspace = true

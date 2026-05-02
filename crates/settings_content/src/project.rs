@@ -85,6 +85,11 @@ pub struct ProjectSettingsContent {
     ///
     /// Default: false
     pub disable_ai: Option<SaturatingBool>,
+
+    /// Whether to disable all AI features except edit suggestions.
+    ///
+    /// Default: false
+    pub disable_agents_ai: Option<SaturatingBool>,
 }
 
 #[with_fallible_options]

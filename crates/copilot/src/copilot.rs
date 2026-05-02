@@ -1489,7 +1489,13 @@ mod tests {
             AllLanguageSettings::register(cx);
 
             // Set disable_ai to true before creating Copilot
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+            DisableAiSettings::override_global(
+                DisableAiSettings {
+                    disable_ai: true,
+                    disable_agents_ai: false,
+                },
+                cx,
+            );
         });
 
         let copilot = cx.new(|cx| Copilot {
@@ -1524,7 +1530,13 @@ mod tests {
             AllLanguageSettings::register(cx);
 
             // AI is initially enabled
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            DisableAiSettings::override_global(
+                DisableAiSettings {
+                    disable_ai: false,
+                    disable_agents_ai: false,
+                },
+                cx,
+            );
         });
 
         // Create a fake Copilot that's already running, with the settings observer
@@ -1569,7 +1581,13 @@ mod tests {
 
         // Now disable AI
         cx.update(|cx| {
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+            DisableAiSettings::override_global(
+                DisableAiSettings {
+                    disable_ai: true,
+                    disable_agents_ai: false,
+                },
+                cx,
+            );
         });
 
         // The settings observer should have stopped the server
@@ -1835,7 +1853,13 @@ mod tests {
             AllLanguageSettings::register(cx);
 
             // AI is initially disabled
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+            DisableAiSettings::override_global(
+                DisableAiSettings {
+                    disable_ai: true,
+                    disable_agents_ai: false,
+                },
+                cx,
+            );
         });
 
         let copilot = cx.new(|cx| Copilot {
@@ -1870,7 +1894,13 @@ mod tests {
 
         // Now enable AI
         cx.update(|cx| {
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            DisableAiSettings::override_global(
+                DisableAiSettings {
+                    disable_ai: false,
+                    disable_agents_ai: false,
+                },
+                cx,
+            );
         });
 
         // Try to start again - should work now

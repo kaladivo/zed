@@ -7334,7 +7334,7 @@ fn collaboration_page() -> SettingsPage {
 }
 
 fn ai_page(cx: &App) -> SettingsPage {
-    fn general_section() -> [SettingsPageItem; 3] {
+    fn general_section() -> [SettingsPageItem; 4] {
         [
             SettingsPageItem::SectionHeader("General"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -7345,6 +7345,19 @@ fn ai_page(cx: &App) -> SettingsPage {
                     pick: |settings_content| settings_content.project.disable_ai.as_ref(),
                     write: |settings_content, value| {
                         settings_content.project.disable_ai = value;
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Disable agents AI",
+                description: "Disable all AI features except edit suggestions",
+                field: Box::new(SettingField {
+                    json_path: Some("disable_agents_ai"),
+                    pick: |settings_content| settings_content.project.disable_agents_ai.as_ref(),
+                    write: |settings_content, value| {
+                        settings_content.project.disable_agents_ai = value;
                     },
                 }),
                 metadata: None,

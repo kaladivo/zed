@@ -38,7 +38,13 @@ async fn test_sidebar_disabled_when_disable_ai_is_enabled(cx: &mut TestAppContex
     });
 
     cx.update(|_window, cx| {
-        DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+        DisableAiSettings::override_global(
+            DisableAiSettings {
+                disable_ai: true,
+                disable_agents_ai: false,
+            },
+            cx,
+        );
     });
     cx.run_until_parked();
 
@@ -64,7 +70,13 @@ async fn test_sidebar_disabled_when_disable_ai_is_enabled(cx: &mut TestAppContex
     });
 
     cx.update(|_window, cx| {
-        DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+        DisableAiSettings::override_global(
+            DisableAiSettings {
+                disable_ai: false,
+                disable_agents_ai: false,
+            },
+            cx,
+        );
     });
     cx.run_until_parked();
 
