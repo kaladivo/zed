@@ -36,9 +36,9 @@ use git::{
     repository::{
         Branch, BranchesScanResult, CommitData, CommitDetails, CommitDiff, CommitFile,
         CommitOptions, CreateWorktreeTarget, DiffType, FetchOptions, GitCommitTemplate,
-        GitRepository, GitRepositoryCheckpoint, InitialGraphCommitData, LogOrder, LogSource,
-        PushOptions, Remote, RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs,
-        UpstreamTrackingStatus, Worktree as GitWorktree, delete_branch_flag,
+        GitRepository, GitRepositoryCheckpoint, GraphRef, InitialGraphCommitData, LogOrder,
+        LogSource, PushOptions, Remote, RemoteCommandOutput, RepoPath, ResetMode,
+        SearchCommitArgs, UpstreamTrackingStatus, Worktree as GitWorktree, delete_branch_flag,
     },
     stash::{GitStash, StashEntry},
     status::{
@@ -6962,6 +6962,17 @@ impl Repository {
                         error: response.error.map(SharedString::from),
                     })
                 }
+            }
+        })
+    }
+
+    pub fn graph_refs(&mut self) -> oneshot::Receiver<Result<Vec<GraphRef>>> {
+        self.send_job(None, move |repo, _| async move {
+            match repo {
+                RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
+                    backend.graph_refs().await
+                }
+                RepositoryState::Remote(_) => Ok(Vec::new()),
             }
         })
     }

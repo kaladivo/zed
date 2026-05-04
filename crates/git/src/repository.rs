@@ -113,6 +113,22 @@ impl InitialGraphCommitData {
     }
 }
 
+// Fork-only: drop this graph ref suggestion support when upstream Zed ships an
+// official branch/tag filter for the git graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GraphRefKind {
+    Branch,
+    Tag,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphRef {
+    pub name: SharedString,
+    pub ref_name: SharedString,
+    pub kind: GraphRefKind,
+    pub is_head: bool,
+}
+
 struct CommitDataRequest {
     sha: Oid,
     response_tx: oneshot::Sender<Result<CommitData>>,
@@ -1040,6 +1056,8 @@ pub trait GitRepository: Send + Sync {
         search_args: SearchCommitArgs,
         request_tx: Sender<Oid>,
     ) -> BoxFuture<'_, Result<()>>;
+
+    fn graph_refs(&self) -> BoxFuture<'_, Result<Vec<GraphRef>>>;
 
     fn commit_data_reader(&self) -> Result<CommitDataReader>;
 
@@ -3098,6 +3116,76 @@ impl GitRepository for RealGitRepository {
 
             child.status().await?;
             Ok(())
+        }
+        .boxed()
+    }
+
+    fn graph_refs(&self) -> BoxFuture<'_, Result<Vec<GraphRef>>> {
+        let git_binary = self.git_binary();
+
+        async move {
+            let git = git_binary?;
+            let fields = ["%(HEAD)", "%(refname)"].join("%00");
+            let args = vec![
+                "for-each-ref",
+                "refs/heads",
+                "refs/remotes",
+                "refs/tags",
+                "--format",
+                &fields,
+            ];
+            let output = git.build_command(&args).output().await?;
+
+            anyhow::ensure!(
+                output.status.success(),
+                "Failed to list git graph refs:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let input = String::from_utf8_lossy(&output.stdout);
+            let mut refs = Vec::new();
+            for line in input.lines() {
+                let mut fields = line.split('\0');
+                let Some(head) = fields.next() else {
+                    continue;
+                };
+                let Some(ref_name) = fields.next() else {
+                    continue;
+                };
+
+                let (kind, name) = if let Some(name) = ref_name.strip_prefix("refs/heads/") {
+                    (GraphRefKind::Branch, name)
+                } else if let Some(name) = ref_name.strip_prefix("refs/remotes/") {
+                    (GraphRefKind::Branch, name)
+                } else if let Some(name) = ref_name.strip_prefix("refs/tags/") {
+                    (GraphRefKind::Tag, name)
+                } else {
+                    continue;
+                };
+
+                refs.push(GraphRef {
+                    name: name.to_string().into(),
+                    ref_name: ref_name.to_string().into(),
+                    kind,
+                    is_head: head == "*",
+                });
+            }
+
+            refs.sort_by(|left, right| {
+                let left_kind = match left.kind {
+                    GraphRefKind::Branch => 0,
+                    GraphRefKind::Tag => 1,
+                };
+                let right_kind = match right.kind {
+                    GraphRefKind::Branch => 0,
+                    GraphRefKind::Tag => 1,
+                };
+                left_kind
+                    .cmp(&right_kind)
+                    .then_with(|| left.name.cmp(&right.name))
+            });
+
+            Ok(refs)
         }
         .boxed()
     }

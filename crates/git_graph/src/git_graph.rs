@@ -1,12 +1,12 @@
 use collections::{BTreeMap, HashMap, IndexSet};
-use editor::Editor;
+use editor::{Editor, EditorEvent};
 use git::{
     BuildCommitPermalinkParams, GitHostingProviderRegistry, GitRemote, Oid, ParsedGitRemote,
     commit::ParsedCommitMessage,
     parse_git_remote_url,
     repository::{
-        CommitDiff, CommitFile, InitialGraphCommitData, LogOrder, LogSource, RepoPath,
-        SearchCommitArgs,
+        CommitDiff, CommitFile, GraphRef, GraphRefKind, InitialGraphCommitData, LogOrder,
+        LogSource, RepoPath, SearchCommitArgs,
     },
     status::{FileStatus, StatusCode, TrackedStatus},
 };
@@ -1108,6 +1108,10 @@ struct GitGraphContextMenu {
 pub struct GitGraph {
     focus_handle: FocusHandle,
     search_state: SearchState,
+    ref_filter_editor: Entity<Editor>,
+    ref_suggestions: Vec<GraphRef>,
+    show_ref_suggestions: bool,
+    _ref_suggestions_task: Option<Task<()>>,
     graph_data: GraphData,
     git_store: Entity<GitStore>,
     workspace: WeakEntity<Workspace>,
@@ -1126,6 +1130,7 @@ pub struct GitGraph {
     repo_id: RepositoryId,
     changed_files_scroll_handle: UniformListScrollHandle,
     pending_select_sha: Option<Oid>,
+    _ref_filter_subscription: Subscription,
 }
 
 impl GitGraph {
@@ -1135,6 +1140,13 @@ impl GitGraph {
         self.search_state.selected_index = None;
         self.search_state.state.next_state();
         self.context_menu = None;
+        self.show_ref_suggestions = false;
+        self.selected_entry_idx = None;
+        self.hovered_entry_idx = None;
+        self.selected_commit_diff = None;
+        self.selected_commit_diff_stats = None;
+        self._commit_diff_task = None;
+        self.pending_select_sha = None;
         cx.emit(ItemEvent::Edit);
         cx.notify();
     }
@@ -1256,6 +1268,20 @@ impl GitGraph {
             editor.set_placeholder_text("Search commits…", window, cx);
             editor
         });
+        let ref_filter_editor = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_placeholder_text("Filter branch or tag…", window, cx);
+            editor
+        });
+        let _ref_filter_subscription = cx.subscribe_in(
+            &ref_filter_editor,
+            window,
+            |this, _, event: &EditorEvent, window, cx| {
+                if matches!(event, EditorEvent::BufferEdited) {
+                    this.update_ref_suggestions(window, cx);
+                }
+            },
+        );
 
         let table_interaction_state = cx.new(|cx| {
             let mut state = TableInteractionState::new(cx);
@@ -1329,6 +1355,10 @@ impl GitGraph {
                 selected_index: None,
                 state: QueryState::Empty,
             },
+            ref_filter_editor,
+            ref_suggestions: Vec::new(),
+            show_ref_suggestions: false,
+            _ref_suggestions_task: None,
             workspace,
             graph_data: graph,
             _commit_diff_task: None,
@@ -1346,6 +1376,7 @@ impl GitGraph {
             repo_id,
             changed_files_scroll_handle: UniformListScrollHandle::new(),
             pending_select_sha: None,
+            _ref_filter_subscription,
         };
 
         this.fetch_initial_graph_data(cx);
@@ -1448,6 +1479,106 @@ impl GitGraph {
         }
     }
 
+    fn apply_ref_filter(
+        &mut self,
+        _: &menu::Confirm,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let filter = self.ref_filter_editor.read(cx).text(cx);
+        let filter = filter.trim();
+        let next_log_source = if filter.is_empty() {
+            LogSource::All
+        } else {
+            LogSource::Branch(SharedString::from(filter.to_string()))
+        };
+
+        self.show_ref_suggestions = false;
+        if self.log_source != next_log_source {
+            self.log_source = next_log_source;
+            self.invalidate_state(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
+    fn clear_ref_filter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ref_filter_editor.update(cx, |editor, cx| {
+            editor.set_text("", window, cx);
+        });
+        self.ref_suggestions.clear();
+        self.show_ref_suggestions = false;
+
+        if self.log_source != LogSource::All {
+            self.log_source = LogSource::All;
+            self.invalidate_state(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
+    fn update_ref_suggestions(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let query = self.ref_filter_editor.read(cx).text(cx);
+        let query = query.trim().to_string();
+        if query.is_empty()
+            || matches!(&self.log_source, LogSource::Branch(active_ref) if active_ref.as_ref() == query)
+        {
+            self.ref_suggestions.clear();
+            self.show_ref_suggestions = false;
+            cx.notify();
+            return;
+        }
+
+        let Some(repository) = self.get_repository(cx) else {
+            self.ref_suggestions.clear();
+            self.show_ref_suggestions = false;
+            cx.notify();
+            return;
+        };
+
+        let refs_receiver = repository.update(cx, |repository, _| repository.graph_refs());
+        self._ref_suggestions_task = Some(cx.spawn(async move |this, cx| {
+            let Ok(Ok(refs)) = refs_receiver.await else {
+                return;
+            };
+
+            this.update(cx, |this, cx| {
+                let current_query = this.ref_filter_editor.read(cx).text(cx);
+                let current_query = current_query.trim();
+                if current_query != query {
+                    return;
+                }
+
+                let query = query.to_lowercase();
+                let suggestions = refs
+                    .into_iter()
+                    .filter(|graph_ref| graph_ref.name.to_lowercase().starts_with(&query))
+                    .take(12)
+                    .collect::<Vec<_>>();
+                this.show_ref_suggestions = !suggestions.is_empty();
+                this.ref_suggestions = suggestions;
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn select_ref_suggestion(
+        &mut self,
+        suggestion: GraphRef,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let name = suggestion.name.clone();
+        self.log_source = LogSource::Branch(suggestion.ref_name.clone());
+        self.ref_filter_editor.update(cx, |editor, cx| {
+            editor.set_text(name.as_ref(), window, cx);
+        });
+        self.ref_suggestions.clear();
+        self.show_ref_suggestions = false;
+        self.invalidate_state(cx);
+    }
+
     fn get_repository(&self, cx: &App) -> Option<Entity<Repository>> {
         let git_store = self.git_store.read(cx);
         git_store.repositories().get(&self.repo_id).cloned()
@@ -1470,7 +1601,34 @@ impl GitGraph {
         name: &SharedString,
         accent_color: gpui::Hsla,
         is_head: bool,
-    ) -> impl IntoElement {
+    ) -> AnyElement {
+        if let Some(tag_name) = name
+            .strip_prefix("tag: ")
+            .or_else(|| name.strip_prefix("refs/tags/"))
+        {
+            return h_flex()
+                .flex_none()
+                .gap_0p5()
+                .px_1()
+                .border_1()
+                .rounded_sm()
+                .border_color(accent_color.opacity(0.25))
+                .bg(accent_color.opacity(0.08))
+                .overflow_hidden()
+                .child(
+                    Label::new("tag:")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .italic(),
+                )
+                .child(
+                    Label::new(tag_name.to_string())
+                        .size(LabelSize::Small)
+                        .truncate(),
+                )
+                .into_any_element();
+        }
+
         Chip::new(name.clone())
             .label_size(LabelSize::Small)
             .truncate()
@@ -1484,6 +1642,7 @@ impl GitGraph {
                         .border_color(accent_color.opacity(0.25))
                 }
             })
+            .into_any_element()
     }
 
     fn render_table_rows(
@@ -2338,6 +2497,9 @@ impl GitGraph {
             .focus_handle(cx)
             .tab_index(1)
             .tab_stop(true);
+        // Fork-only: drop this ref filter when upstream Zed ships an official
+        // branch/tag filter for the git graph.
+        let ref_filter_is_active = !matches!(self.log_source, LogSource::All);
         let search_options = {
             let mut options = SearchOptions::NONE;
             options.set(
@@ -2357,6 +2519,42 @@ impl GitGraph {
             .gap_1p5()
             .border_b_1()
             .border_color(color.border_variant)
+            .child(
+                h_flex()
+                    .h_8()
+                    .w(rems(18.))
+                    .min_w(rems(12.))
+                    .px_1p5()
+                    .gap_1()
+                    .border_1()
+                    .border_color(if ref_filter_is_active {
+                        Color::Accent.color(cx)
+                    } else {
+                        color.border_variant
+                    })
+                    .rounded_md()
+                    .bg(color.toolbar_background)
+                    .on_action(cx.listener(Self::apply_ref_filter))
+                    .child(Icon::new(IconName::GitBranch).size(IconSize::Small).color(
+                        if ref_filter_is_active {
+                            Color::Accent
+                        } else {
+                            Color::Muted
+                        },
+                    ))
+                    .child(self.ref_filter_editor.clone())
+                    .when(ref_filter_is_active, |this| {
+                        this.child(
+                            IconButton::new("git-graph-clear-ref-filter", IconName::Close)
+                                .shape(ui::IconButtonShape::Square)
+                                .icon_size(IconSize::Small)
+                                .tooltip(Tooltip::text("Clear Ref Filter"))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.clear_ref_filter(window, cx);
+                                })),
+                        )
+                    }),
+            )
             .child(
                 h_flex()
                     .h_8()
@@ -2461,6 +2659,77 @@ impl GitGraph {
                             ),
                     ),
             )
+    }
+
+    fn render_ref_suggestions(&self, cx: &mut Context<Self>) -> AnyElement {
+        if !self.show_ref_suggestions || self.ref_suggestions.is_empty() {
+            return Empty.into_any_element();
+        }
+
+        let color = cx.theme().colors();
+        v_flex()
+            .mx_1p5()
+            .mb_1p5()
+            .w(rems(18.))
+            .max_h(rems(18.))
+            .overflow_hidden()
+            .border_1()
+            .border_color(color.border_variant)
+            .rounded_md()
+            .bg(color.elevated_surface_background)
+            .shadow_md()
+            .children(
+                self.ref_suggestions
+                    .iter()
+                    .enumerate()
+                    .map(|(ix, suggestion)| {
+                        let suggestion = suggestion.clone();
+                        let icon = match suggestion.kind {
+                            GraphRefKind::Branch => {
+                                if suggestion.is_head {
+                                    IconName::Check
+                                } else {
+                                    IconName::GitBranch
+                                }
+                            }
+                            GraphRefKind::Tag => IconName::Bookmark,
+                        };
+                        let kind_label = match suggestion.kind {
+                            GraphRefKind::Branch => "branch",
+                            GraphRefKind::Tag => "tag",
+                        };
+
+                        ButtonLike::new(("git-graph-ref-suggestion", ix))
+                            .full_width()
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .min_w_0()
+                                    .px_2()
+                                    .py_1()
+                                    .gap_2()
+                                    .child(
+                                        Icon::new(icon).size(IconSize::Small).color(Color::Muted),
+                                    )
+                                    .child(
+                                        Label::new(suggestion.name.clone())
+                                            .size(LabelSize::Small)
+                                            .truncate(),
+                                    )
+                                    .child(
+                                        Label::new(kind_label)
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted)
+                                            .italic(),
+                                    ),
+                            )
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.select_ref_suggestion(suggestion.clone(), window, cx);
+                            }))
+                            .into_any_element()
+                    }),
+            )
+            .into_any_element()
     }
 
     fn render_loading_spinner(&self, cx: &App) -> AnyElement {
@@ -3628,6 +3897,7 @@ impl Render for GitGraph {
                 v_flex()
                     .size_full()
                     .child(self.render_search_bar(cx))
+                    .child(self.render_ref_suggestions(cx))
                     .child(div().flex_1().child(content)),
             )
             .children(self.context_menu.as_ref().map(|context_menu| {

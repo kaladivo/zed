@@ -13,8 +13,8 @@ use git::{
     repository::{
         AskPassDelegate, Branch, CommitData, CommitDataReader, CommitDetails, CommitOptions,
         CreateWorktreeTarget, FetchOptions, GRAPH_CHUNK_SIZE, GitRepository,
-        GitRepositoryCheckpoint, InitialGraphCommitData, LogOrder, LogSource, PushOptions, RefEdit,
-        Remote, RepoPath, ResetMode, SearchCommitArgs, Worktree,
+        GitRepositoryCheckpoint, GraphRef, GraphRefKind, InitialGraphCommitData, LogOrder,
+        LogSource, PushOptions, RefEdit, Remote, RepoPath, ResetMode, SearchCommitArgs, Worktree,
     },
     stash::GitStash,
     status::{
@@ -1501,6 +1501,34 @@ impl GitRepository for FakeGitRepository {
 
             Ok(())
         }
+        .boxed()
+    }
+
+    fn graph_refs(&self) -> BoxFuture<'_, Result<Vec<GraphRef>>> {
+        self.with_state_async(false, |state| {
+            let mut refs = state
+                .branches
+                .iter()
+                .map(|branch| GraphRef {
+                    name: branch.clone().into(),
+                    ref_name: format!("refs/heads/{branch}").into(),
+                    kind: GraphRefKind::Branch,
+                    is_head: state.current_branch_name.as_ref() == Some(branch),
+                })
+                .collect::<Vec<_>>();
+
+            refs.extend(state.refs.keys().filter_map(|ref_name| {
+                let tag = ref_name.strip_prefix("refs/tags/")?;
+                Some(GraphRef {
+                    name: tag.to_string().into(),
+                    ref_name: ref_name.clone().into(),
+                    kind: GraphRefKind::Tag,
+                    is_head: false,
+                })
+            }));
+            refs.sort_by(|left, right| left.name.cmp(&right.name));
+            Ok(refs)
+        })
         .boxed()
     }
 
