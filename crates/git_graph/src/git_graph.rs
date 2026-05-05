@@ -1517,6 +1517,22 @@ impl GitGraph {
         }
     }
 
+    fn apply_head_ref_filter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ref_filter_editor.update(cx, |editor, cx| {
+            editor.set_text("HEAD", window, cx);
+        });
+        self.ref_suggestions.clear();
+        self.show_ref_suggestions = false;
+
+        let next_log_source = LogSource::Branch("HEAD".into());
+        if self.log_source != next_log_source {
+            self.log_source = next_log_source;
+            self.invalidate_state(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
     fn update_ref_suggestions(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let query = self.ref_filter_editor.read(cx).text(cx);
         let query = query.trim().to_string();
@@ -2500,6 +2516,8 @@ impl GitGraph {
         // Fork-only: drop this ref filter when upstream Zed ships an official
         // branch/tag filter for the git graph.
         let ref_filter_is_active = !matches!(self.log_source, LogSource::All);
+        let head_ref_filter_is_active =
+            matches!(&self.log_source, LogSource::Branch(ref_name) if ref_name.as_ref() == "HEAD");
         let search_options = {
             let mut options = SearchOptions::NONE;
             options.set(
@@ -2554,6 +2572,17 @@ impl GitGraph {
                                 })),
                         )
                     }),
+            )
+            .child(
+                IconButton::new("git-graph-filter-head", IconName::GitCommit)
+                    .shape(ui::IconButtonShape::Square)
+                    .icon_size(IconSize::Small)
+                    .toggle_state(head_ref_filter_is_active)
+                    .selected_icon_color(Color::Accent)
+                    .tooltip(Tooltip::text("Filter HEAD"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.apply_head_ref_filter(window, cx);
+                    })),
             )
             .child(
                 h_flex()
