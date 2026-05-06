@@ -24,7 +24,7 @@ use gpui::{
     px, uniform_list,
 };
 use language::line_diff;
-use menu::{Cancel, SelectFirst, SelectLast, SelectNext, SelectPrevious};
+use menu::{Cancel, Confirm, SelectFirst, SelectLast, SelectNext, SelectPrevious};
 use picker::{Picker, PickerDelegate};
 use project::{
     GIT_COMMAND_TASK_TAG, ProjectPath, TaskSourceKind,
@@ -60,6 +60,7 @@ use ui::{
 use workspace::{
     ModalView, Workspace,
     item::{Item, ItemEvent, TabTooltipContent},
+    notifications::DetachAndPromptErr,
 };
 
 const COMMIT_CIRCLE_RADIUS: Pixels = px(3.5);
@@ -196,6 +197,92 @@ impl PickerDelegate for CommitTagPickerDelegate {
                 .toggle_state(selected)
                 .child(Label::new(self.tag_names.get(ix)?.clone())),
         )
+    }
+}
+
+struct CreateBranchAtCommitModal {
+    commit_sha: SharedString,
+    editor: Entity<Editor>,
+    repository: Entity<Repository>,
+}
+
+impl CreateBranchAtCommitModal {
+    fn new(
+        commit_sha: SharedString,
+        repository: Entity<Repository>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let editor = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_placeholder_text("Branch name", window, cx);
+            editor
+        });
+
+        Self {
+            commit_sha,
+            editor,
+            repository,
+        }
+    }
+
+    fn cancel(&mut self, _: &Cancel, _window: &mut Window, cx: &mut Context<Self>) {
+        cx.emit(DismissEvent);
+    }
+
+    fn confirm(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
+        let branch_name = self.editor.read(cx).text(cx);
+        if branch_name.is_empty() {
+            return;
+        }
+
+        let commit_sha = self.commit_sha.to_string();
+        let repository = self.repository.clone();
+        cx.spawn(async move |_, cx| {
+            match repository
+                .update(cx, |repository, _| {
+                    repository.create_branch(branch_name, Some(commit_sha))
+                })
+                .await
+            {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Err(anyhow::anyhow!("Operation was canceled")),
+            }
+        })
+        .detach_and_prompt_err("Failed to create branch", window, cx, |_, _, _| None);
+
+        cx.emit(DismissEvent);
+    }
+}
+
+impl EventEmitter<DismissEvent> for CreateBranchAtCommitModal {}
+impl ModalView for CreateBranchAtCommitModal {}
+impl Focusable for CreateBranchAtCommitModal {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.editor.focus_handle(cx)
+    }
+}
+
+impl Render for CreateBranchAtCommitModal {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .key_context("CreateBranchAtCommitModal")
+            .on_action(cx.listener(Self::cancel))
+            .on_action(cx.listener(Self::confirm))
+            .elevation_2(cx)
+            .w(rems(34.))
+            .child(
+                h_flex()
+                    .px_3()
+                    .pt_2()
+                    .pb_1()
+                    .w_full()
+                    .gap_1p5()
+                    .child(Icon::new(IconName::GitBranch).size(IconSize::XSmall))
+                    .child(Headline::new("Create Branch").size(HeadlineSize::XSmall)),
+            )
+            .child(div().px_3().pb_3().w_full().child(self.editor.clone()))
     }
 }
 
@@ -2343,6 +2430,7 @@ impl GitGraph {
         };
         let sha = commit.data.sha;
         let sha_short = sha.display_short();
+        let commit_sha: SharedString = sha.to_string().into();
         let git_tasks = self
             .git_task_context(sha, cx)
             .map(|task_context| self.git_context_menu_tasks(&task_context, cx))
@@ -2411,6 +2499,30 @@ impl GitGraph {
                             menu
                         }),
                     }
+                })
+                .entry("Checkout Commit", None, {
+                    let commit_sha = commit_sha.clone();
+                    window.handler_for(&git_graph, move |this, window, cx| {
+                        this.checkout_commit(commit_sha.clone(), window, cx);
+                    })
+                })
+                .entry("Create and Checkout Branch...", None, {
+                    let commit_sha = commit_sha.clone();
+                    window.handler_for(&git_graph, move |this, window, cx| {
+                        this.create_branch_at_commit(commit_sha.clone(), window, cx);
+                    })
+                })
+                .separator()
+                .entry("Cherry-pick Commit", None, {
+                    let commit_sha = commit_sha.clone();
+                    window.handler_for(&git_graph, move |this, window, cx| {
+                        this.cherry_pick(commit_sha.clone(), window, cx);
+                    })
+                })
+                .entry("Revert Commit", None, {
+                    window.handler_for(&git_graph, move |this, window, cx| {
+                        this.revert_commit(commit_sha.clone(), window, cx);
+                    })
                 })
                 .map(|mut menu| {
                     menu = menu.separator().header("Custom Commands");
@@ -3515,11 +3627,100 @@ impl GitGraph {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if event.button != MouseButton::Right {
+            return;
+        }
+
         let Some(row) = self.row_at_position(event.position.y, window, cx) else {
             return;
         };
 
         self.handle_entry_secondary_mouse_down(row, event, window, cx);
+    }
+
+    fn checkout_commit(
+        &self,
+        commit_sha: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+
+        cx.spawn(async move |_, cx| {
+            match repository
+                .update(cx, |repository, _| {
+                    repository.checkout_commit(commit_sha.to_string())
+                })
+                .await
+            {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Err(anyhow::anyhow!("Operation was canceled")),
+            }
+        })
+        .detach_and_prompt_err("Failed to checkout commit", window, cx, |_, _, _| None);
+    }
+
+    fn cherry_pick(&self, commit_sha: SharedString, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+
+        cx.spawn(async move |_, cx| {
+            match repository
+                .update(cx, |repository, _| {
+                    repository.cherry_pick(commit_sha.to_string())
+                })
+                .await
+            {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Err(anyhow::anyhow!("Operation was canceled")),
+            }
+        })
+        .detach_and_prompt_err("Failed to cherry-pick commit", window, cx, |_, _, _| None);
+    }
+
+    fn revert_commit(&self, commit_sha: SharedString, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+
+        cx.spawn(async move |_, cx| {
+            match repository
+                .update(cx, |repository, _| {
+                    repository.revert_commit(commit_sha.to_string())
+                })
+                .await
+            {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Err(anyhow::anyhow!("Operation was canceled")),
+            }
+        })
+        .detach_and_prompt_err("Failed to revert commit", window, cx, |_, _, _| None);
+    }
+
+    fn create_branch_at_commit(
+        &self,
+        commit_sha: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repository) = self.get_repository(cx) else {
+            return;
+        };
+        let workspace = self.workspace.clone();
+
+        workspace
+            .update(cx, |workspace, cx| {
+                workspace.toggle_modal(window, cx, |window, cx| {
+                    CreateBranchAtCommitModal::new(commit_sha, repository, window, cx)
+                });
+            })
+            .ok();
     }
 
     fn handle_graph_scroll(

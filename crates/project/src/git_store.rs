@@ -6967,7 +6967,7 @@ impl Repository {
     }
 
     pub fn graph_refs(&mut self) -> oneshot::Receiver<Result<Vec<GraphRef>>> {
-        self.send_job(None, move |repo, _| async move {
+        self.send_job("graph_refs", None, move |repo, _| async move {
             match repo {
                 RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
                     backend.graph_refs().await
@@ -7527,6 +7527,12 @@ impl Repository {
                         backend.create_branch(branch_name, base_branch).await
                     }
                     RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                        if base_branch.is_some() {
+                            anyhow::bail!(
+                                "creating branches from a specific commit is not supported for remote projects"
+                            );
+                        }
+
                         client
                             .request(proto::GitCreateBranch {
                                 project_id: project_id.0,
@@ -7537,6 +7543,57 @@ impl Repository {
                             .await?;
 
                         Ok(())
+                    }
+                }
+            },
+        )
+    }
+
+    pub fn checkout_commit(&mut self, commit: String) -> oneshot::Receiver<Result<()>> {
+        self.send_job(
+            "checkout_commit",
+            Some(format!("git switch --detach {commit}").into()),
+            move |repo, _cx| async move {
+                match repo {
+                    RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
+                        backend.checkout_commit(commit).await
+                    }
+                    RepositoryState::Remote(_) => {
+                        anyhow::bail!("checking out commits is not supported for remote projects")
+                    }
+                }
+            },
+        )
+    }
+
+    pub fn cherry_pick(&mut self, commit: String) -> oneshot::Receiver<Result<()>> {
+        self.send_job(
+            "cherry_pick",
+            Some(format!("git cherry-pick {commit}").into()),
+            move |repo, _cx| async move {
+                match repo {
+                    RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
+                        backend.cherry_pick(commit).await
+                    }
+                    RepositoryState::Remote(_) => {
+                        anyhow::bail!("cherry-picking commits is not supported for remote projects")
+                    }
+                }
+            },
+        )
+    }
+
+    pub fn revert_commit(&mut self, commit: String) -> oneshot::Receiver<Result<()>> {
+        self.send_job(
+            "revert_commit",
+            Some(format!("git revert --no-edit {commit}").into()),
+            move |repo, _cx| async move {
+                match repo {
+                    RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
+                        backend.revert_commit(commit).await
+                    }
+                    RepositoryState::Remote(_) => {
+                        anyhow::bail!("reverting commits is not supported for remote projects")
                     }
                 }
             },

@@ -827,6 +827,27 @@ pub trait GitRepository: Send + Sync {
 
     fn branches(&self) -> BoxFuture<'_, Result<BranchesScanResult>>;
 
+    fn checkout_commit(&self, _commit: String) -> BoxFuture<'_, Result<()>> {
+        async move {
+            anyhow::bail!("checking out commits is not supported for this repository");
+        }
+        .boxed()
+    }
+
+    fn cherry_pick(&self, _commit: String) -> BoxFuture<'_, Result<()>> {
+        async move {
+            anyhow::bail!("cherry-picking commits is not supported for this repository");
+        }
+        .boxed()
+    }
+
+    fn revert_commit(&self, _commit: String) -> BoxFuture<'_, Result<()>> {
+        async move {
+            anyhow::bail!("reverting commits is not supported for this repository");
+        }
+        .boxed()
+    }
+
     fn change_branch(&self, name: String) -> BoxFuture<'_, Result<()>>;
     fn create_branch(&self, name: String, base_branch: Option<String>)
     -> BoxFuture<'_, Result<()>>;
@@ -2080,6 +2101,39 @@ impl GitRepository for RealGitRepository {
                 }
 
                 git_binary?.run(&args).await?;
+                anyhow::Ok(())
+            })
+            .boxed()
+    }
+
+    fn checkout_commit(&self, commit: String) -> BoxFuture<'_, Result<()>> {
+        let git_binary = self.git_binary();
+
+        self.executor
+            .spawn(async move {
+                git_binary?.run(&["switch", "--detach", &commit]).await?;
+                anyhow::Ok(())
+            })
+            .boxed()
+    }
+
+    fn cherry_pick(&self, commit: String) -> BoxFuture<'_, Result<()>> {
+        let git_binary = self.git_binary();
+
+        self.executor
+            .spawn(async move {
+                git_binary?.run(&["cherry-pick", &commit]).await?;
+                anyhow::Ok(())
+            })
+            .boxed()
+    }
+
+    fn revert_commit(&self, commit: String) -> BoxFuture<'_, Result<()>> {
+        let git_binary = self.git_binary();
+
+        self.executor
+            .spawn(async move {
+                git_binary?.run(&["revert", "--no-edit", &commit]).await?;
                 anyhow::Ok(())
             })
             .boxed()
