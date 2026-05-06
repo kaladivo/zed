@@ -1,8 +1,9 @@
 use crate::{
-    Copy, CopyAndTrim, CopyPermalinkToLine, Cut, DisplayPoint, DisplaySnapshot, Editor,
-    EvaluateSelectedText, FindAllReferences, GoToDeclaration, GoToDefinition, GoToImplementation,
-    GoToTypeDefinition, Paste, Rename, RevealInFileManager, RunToCursor, SelectMode,
-    SelectionEffects, SelectionExt, ToDisplayPoint, ToggleCodeActions,
+    Copy, CopyAbsolutePathAndLines, CopyAndTrim, CopyPermalinkToLine, CopyRelativePathAndLines,
+    Cut, DisplayPoint, DisplaySnapshot, Editor, EvaluateSelectedText, FindAllReferences,
+    GoToDeclaration, GoToDefinition, GoToImplementation, GoToTypeDefinition, Paste, Rename,
+    RevealInFileManager, RunToCursor, SelectMode, SelectionEffects, SelectionExt, ToDisplayPoint,
+    ToggleCodeActions,
     actions::{Format, FormatSelections},
     selections_collection::SelectionsCollection,
 };
@@ -200,6 +201,11 @@ pub fn deploy_context_menu(
 
         let focus = window.focused(cx);
         let has_reveal_target = editor.target_file(cx).is_some();
+        let has_file_path = editor
+            .active_buffer(cx)
+            .and_then(|buffer| buffer.read(cx).file())
+            .is_some();
+        let has_absolute_path = editor.target_file_abs_path(cx).is_some();
         let has_selections = editor
             .selections
             .all::<PointUtf16>(&display_map)
@@ -306,6 +312,16 @@ pub fn deploy_context_menu(
                     !has_git_repo,
                     "Copy Permalink",
                     Box::new(CopyPermalinkToLine),
+                )
+                .action_disabled_when(
+                    !has_file_path,
+                    "Copy Relative Path and Lines",
+                    Box::new(CopyRelativePathAndLines),
+                )
+                .action_disabled_when(
+                    !has_absolute_path,
+                    "Copy Absolute Path and Lines",
+                    Box::new(CopyAbsolutePathAndLines),
                 )
                 .action_disabled_when(
                     !has_git_repo,

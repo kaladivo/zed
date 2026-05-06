@@ -470,6 +470,8 @@ actions!(
         CopyAndTrim,
         /// Copies the current file location to the clipboard.
         CopyFileLocation,
+        /// Copies the current file's absolute path and selected lines to the clipboard.
+        CopyAbsolutePathAndLines,
         /// Copies the highlighted text as JSON.
         CopyHighlightJson,
         /// Copies the current file name to the clipboard.
@@ -478,6 +480,8 @@ actions!(
         CopyFileNameWithoutExtension,
         /// Copies a permalink to the current line.
         CopyPermalinkToLine,
+        /// Copies the current file's relative path and selected lines to the clipboard.
+        CopyRelativePathAndLines,
         /// Cuts selected text to the clipboard.
         Cut,
         /// Deletes the character after the cursor.

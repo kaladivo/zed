@@ -457,6 +457,8 @@ impl EditorElement {
         register_action(editor, window, Editor::copy_file_name_without_extension);
         register_action(editor, window, Editor::copy_highlight_json);
         register_action(editor, window, Editor::copy_permalink_to_line);
+        register_action(editor, window, Editor::copy_relative_path_and_lines);
+        register_action(editor, window, Editor::copy_absolute_path_and_lines);
         register_action(editor, window, Editor::open_permalink_to_line);
         register_action(editor, window, Editor::copy_file_location);
         register_action(editor, window, Editor::toggle_git_blame);

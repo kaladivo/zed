@@ -8380,9 +8380,56 @@ impl Editor {
     pub fn copy_file_location(
         &mut self,
         _: &CopyFileLocation,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.copy_relative_path_and_lines(&CopyRelativePathAndLines, window, cx);
+    }
+
+    pub fn copy_relative_path_and_lines(
+        &mut self,
+        _: &CopyRelativePathAndLines,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(file_location) = self.relative_path_and_lines(cx) {
+            cx.write_to_clipboard(ClipboardItem::new_string(file_location));
+        } else {
+            cx.propagate();
+        }
+    }
+
+    pub fn copy_absolute_path_and_lines(
+        &mut self,
+        _: &CopyAbsolutePathAndLines,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(file_location) = self.absolute_path_and_lines(cx) {
+            cx.write_to_clipboard(ClipboardItem::new_string(file_location));
+        } else {
+            cx.propagate();
+        }
+    }
+
+    fn relative_path_and_lines(&self, cx: &mut Context<Self>) -> Option<String> {
+        self.active_buffer(cx).and_then(|buffer| {
+            let project = self.project()?.read(cx);
+            let file = buffer.read(cx).file()?;
+            let path = file.path().display(project.path_style(cx));
+
+            Some(self.format_path_and_lines(path.to_string(), cx))
+        })
+    }
+
+    fn absolute_path_and_lines(&self, cx: &mut Context<Self>) -> Option<String> {
+        let path = self.target_file_abs_path(cx)?;
+        let path = path.to_str()?;
+
+        Some(self.format_path_and_lines(path.to_string(), cx))
+    }
+
+    fn format_path_and_lines(&self, path: String, cx: &mut Context<Self>) -> String {
         let selection = self.selections.newest::<Point>(&self.display_snapshot(cx));
 
         let start_line = selection.start.row + 1;
@@ -8394,19 +8441,10 @@ impl Editor {
             end_line
         };
 
-        if let Some(file_location) = self.active_buffer(cx).and_then(|buffer| {
-            let project = self.project()?.read(cx);
-            let file = buffer.read(cx).file()?;
-            let path = file.path().display(project.path_style(cx));
-
-            let location = if start_line == end_line {
-                format!("{path}:{start_line}")
-            } else {
-                format!("{path}:{start_line}-{end_line}")
-            };
-            Some(location)
-        }) {
-            cx.write_to_clipboard(ClipboardItem::new_string(file_location));
+        if start_line == end_line {
+            format!("{path}:{start_line}")
+        } else {
+            format!("{path}:{start_line}-{end_line}")
         }
     }
 

@@ -6,9 +6,10 @@ use editor::{
     DocumentColorsRenderMode, Editor, LSP_REQUEST_DEBOUNCE_TIMEOUT, MultiBufferOffset, RowInfo,
     SelectionEffects,
     actions::{
-        ConfirmCodeAction, ConfirmCompletion, ConfirmRename, ContextMenuFirst, CopyFileLocation,
-        CopyFileName, CopyFileNameWithoutExtension, ExpandMacroRecursively, MoveToEnd, Redo,
-        Rename, SelectAll, ToggleCodeActions, Undo,
+        ConfirmCodeAction, ConfirmCompletion, ConfirmRename, ContextMenuFirst,
+        CopyAbsolutePathAndLines, CopyFileLocation, CopyFileName, CopyFileNameWithoutExtension,
+        CopyRelativePathAndLines, ExpandMacroRecursively, MoveToEnd, Redo, Rename, SelectAll,
+        ToggleCodeActions, Undo,
     },
     test::{
         editor_test_context::{AssertionContextManager, EditorTestContext},
@@ -5025,7 +5026,7 @@ async fn test_copy_file_location(cx_a: &mut TestAppContext, cx_b: &mut TestAppCo
         editor.change_selections(Default::default(), window, cx, |s| {
             s.select_ranges([MultiBufferOffset(16)..MultiBufferOffset(16)]);
         });
-        editor.copy_file_location(&CopyFileLocation, window, cx);
+        editor.copy_relative_path_and_lines(&CopyRelativePathAndLines, window, cx);
     });
 
     assert_eq!(
@@ -5043,6 +5044,18 @@ async fn test_copy_file_location(cx_a: &mut TestAppContext, cx_b: &mut TestAppCo
     assert_eq!(
         cx_b.read_from_clipboard().and_then(|item| item.text()),
         Some(format!("{}:2", path!("src/main.rs")))
+    );
+
+    editor_a.update_in(cx_a, |editor, window, cx| {
+        editor.change_selections(Default::default(), window, cx, |s| {
+            s.select_ranges([MultiBufferOffset(16)..MultiBufferOffset(44)]);
+        });
+        editor.copy_absolute_path_and_lines(&CopyAbsolutePathAndLines, window, cx);
+    });
+
+    assert_eq!(
+        cx_a.read_from_clipboard().and_then(|item| item.text()),
+        Some(format!("{}:2-3", path!("/root/src/main.rs")))
     );
 
     editor_a.update_in(cx_a, |editor, window, cx| {
