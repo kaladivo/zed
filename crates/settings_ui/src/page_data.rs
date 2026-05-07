@@ -2487,7 +2487,7 @@ fn editor_page() -> SettingsPage {
                             .breadcrumbs_font_size
                             .as_ref()
                     },
-                    write: |settings_content, value| {
+                    write: |settings_content, value, _| {
                         settings_content
                             .editor
                             .toolbar
@@ -7495,7 +7495,7 @@ fn ai_page(cx: &App) -> SettingsPage {
                 field: Box::new(SettingField {
                     json_path: Some("disable_agents_ai"),
                     pick: |settings_content| settings_content.project.disable_agents_ai.as_ref(),
-                    write: |settings_content, value| {
+                    write: |settings_content, value, _| {
                         settings_content.project.disable_agents_ai = value;
                     },
                 }),

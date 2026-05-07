@@ -2111,7 +2111,7 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
-                git_binary?.run(&["switch", "--detach", &commit]).await?;
+                git_binary.run(&["switch", "--detach", &commit]).await?;
                 anyhow::Ok(())
             })
             .boxed()
@@ -2122,7 +2122,7 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
-                git_binary?.run(&["cherry-pick", &commit]).await?;
+                git_binary.run(&["cherry-pick", &commit]).await?;
                 anyhow::Ok(())
             })
             .boxed()
@@ -2133,7 +2133,7 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
-                git_binary?.run(&["revert", "--no-edit", &commit]).await?;
+                git_binary.run(&["revert", "--no-edit", &commit]).await?;
                 anyhow::Ok(())
             })
             .boxed()
@@ -3178,7 +3178,7 @@ impl GitRepository for RealGitRepository {
         let git_binary = self.git_binary();
 
         async move {
-            let git = git_binary?;
+            let git = git_binary;
             let fields = ["%(HEAD)", "%(refname)"].join("%00");
             let args = vec![
                 "for-each-ref",
